@@ -215,6 +215,15 @@ for input_data in [bert, price, company, entities, sentiment, tfidf, topics, rel
 for key, value in aligned_targets.items():
     assert not np.isnan(value).any(), f"Found NaNs in target data for {key}"
 
+# Required for reshaping 
+class ReshapeLayer(tf.keras.layers.Layer):
+    def __init__(self, target_shape, **kwargs):
+        super(ReshapeLayer, self).__init__(**kwargs)
+        self.target_shape = target_shape
+
+    def call(self, inputs):
+        return tf.reshape(inputs, self.target_shape)
+
 # Build Transformer model
 def build_transformer_model():
     bert_input = Input(shape=(look_back, bert.shape[2]), name='bert_input')
@@ -231,7 +240,7 @@ def build_transformer_model():
     price_dense = TimeDistributed(Dense(128))(price_input)
     company_embedding_layer = Embedding(input_dim=len(price_cols) + 1, output_dim=128, name='company_embedding')
     company_dense = company_embedding_layer(company_input)
-    company_dense = tf.reshape(company_dense, [-1, look_back, 128])
+    company_dense = ReshapeLayer([-1, look_back, 128])(company_dense)
     entities_dense = TimeDistributed(Dense(128))(entities_input)
     sentiment_dense = TimeDistributed(Dense(128))(sentiment_input)
     tfidf_dense = TimeDistributed(Dense(128))(tfidf_input)
@@ -268,7 +277,9 @@ def build_transformer_model():
     ff_dim = 1024  # Hidden layer size in feed forward network inside transformer
 
     transformer_block = TransformerBlock(embed_dim, num_heads, ff_dim)
-    x = transformer_block(combined)
+
+     # Use a Lambda layer to pass the training argument
+    x = tf.keras.layers.Lambda(lambda inputs: transformer_block(inputs, training=True))(combined)
 
     # Regularization
     x = Dropout(0.2)(x)
