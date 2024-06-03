@@ -382,7 +382,6 @@ def plot_error_distribution(predicted, actual, company):
 for company in companies:
     plot_error_distribution(predicted_prices_df[company], actual_prices[company], company)
 
-!pip install newsapi-python
 import yfinance as yf
 from newsapi import NewsApiClient
 from transformers import BertTokenizer
@@ -422,7 +421,7 @@ def predict_stock_prices(preprocessed_news):
         predictions[company] = outputs['output_' + company][0][0]
     return predictions
 
-%%writefile streamlit_app.py
+
 import streamlit as st
 import yfinance as yf
 import pandas as pd
