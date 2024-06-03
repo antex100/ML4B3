@@ -29,7 +29,7 @@ stop_words = set(nltk.corpus.stopwords.words('english'))
 lemmatizer = nltk.stem.WordNetLemmatizer()
 
 # Load dataset
-data = pd.read_csv('/content/first_200_rows_dataset.csv')
+data = pd.read_csv('first_200_rows_dataset.csv')
 
 # Column names
 date_col = "Date"
