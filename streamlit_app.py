@@ -1,3 +1,4 @@
+!pip install streamlit yfinance newsapi-python transformers tensorflow
 import streamlit as st
 import yfinance as yf
 import pandas as pd
