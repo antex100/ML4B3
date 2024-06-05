@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 
 NEWS_API_ENDPOINT = 'https://newsapi.org/v2/top-headlines'
-# NEWS_API_KEY = '<>' # replace with your own News API key
+# NEWS_API_KEY = 'ae91264b58784ff19f181a6691c1efc6' # replace with your own News API key
 
 def fetch_news(country, category=None):
     params = {
