@@ -12,12 +12,15 @@ from sklearn.decomposition import LatentDirichletAllocation
 from sklearn.model_selection import train_test_split, KFold
 from transformers import BertTokenizer, TFBertModel
 from tensorflow.keras.layers import TextVectorization, Embedding, Dense, Input, Concatenate, LayerNormalization, Dropout, TimeDistributed
-from tensorflow.keras.models import Model
+from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping
 import tensorflow as tf
 import nltk
 import matplotlib.pyplot as plt
+import streamlit as st
+from newsapi import NewsApiClient
+from datetime import datetime, timedelta
 
 # Download NLTK data
 nltk.download('stopwords')
@@ -352,8 +355,6 @@ print(predicted_prices_df.head())
 # Save the retrained model
 model.save('retrained_model.h5')
 
-import matplotlib.pyplot as plt
-
 def plot_loss(history, fold):
     plt.plot(history.history['loss'], label='train_loss')
     plt.plot(history.history['val_loss'], label='val_loss')
@@ -393,11 +394,6 @@ def plot_error_distribution(predicted, actual, company):
 for company in companies:
     plot_error_distribution(predicted_prices_df[company], actual_prices[company], company)
 
-import yfinance as yf
-from newsapi import NewsApiClient
-from transformers import BertTokenizer
-import tensorflow as tf
-
 # Initialize BERT tokenizer
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
@@ -431,18 +427,6 @@ def predict_stock_prices(preprocessed_news):
         outputs = model.predict(inputs)
         predictions[company] = outputs['output_' + company][0][0]
     return predictions
-
-
-import streamlit as st
-import yfinance as yf
-import pandas as pd
-import numpy as np
-from newsapi import NewsApiClient
-from transformers import BertTokenizer, TFBertModel
-import tensorflow as tf
-from tensorflow.keras.models import load_model
-from datetime import datetime, timedelta
-import matplotlib.pyplot as plt
 
 # Function to preprocess text
 def preprocess_text(text):
