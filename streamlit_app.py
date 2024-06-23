@@ -197,15 +197,6 @@ def prepare_company_data(ticker, company, from_date, to_date):
         # Create empty DataFrame with the same structure
         company_news_agg = pd.DataFrame({
             'Date': all_dates,
-            'BERT
-
-
-
-
-Continue please
-ChatGPT
-python
-Code kopieren
             'BERT_Embedding': [np.zeros(bert_model.config.hidden_size)] * len(all_dates),
             'Sentiment': [0.0] * len(all_dates)
         })
@@ -396,15 +387,6 @@ st.subheader("Fundamental Data")
 fundamental_data = data_dict[selected_ticker][1]
 st.write(fundamental_data)
 
-# Display
-
-
-
-
-Continue please
-ChatGPT
-python
-Code kopieren
 # Display stock data and prediction chart
 st.subheader(f"Stock Price and Predictions for {selected_ticker}")
 stock_data = data_dict[selected_ticker][0]
