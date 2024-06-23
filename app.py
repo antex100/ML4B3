@@ -14,6 +14,7 @@ import nltk
 from ta import add_all_ta_features
 from textblob import TextBlob
 import re
+import os
 import gdown
 
 # Download the model from Google Drive
