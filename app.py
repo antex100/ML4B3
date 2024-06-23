@@ -17,9 +17,20 @@ import re
 import gdown
 
 # Download the model from Google Drive
-url = 'https://drive.google.com/file/d/1a287f17ubldTvh5P7brg2r_VCqgVWBbB/view?usp=sharing'  # Replace with your shareable link ID
+url = 'https://drive.google.com/uc?id=1a287f17ubldTvh5P7brg2r_VCqgVWBbB'
 output = 'trained_model.h5'
-gdown.download(url, output, quiet=False)
+
+# Check if the file already exists before downloading
+if not os.path.exists(output):
+    gdown.download(url, output, quiet=False)
+
+# Ensure the file has been downloaded successfully
+if not os.path.exists(output):
+    raise FileNotFoundError(f"Failed to download the model file from {url}")
+
+# Load the trained model with the custom layer
+custom_objects = {'TransformerBlock': TransformerBlock}
+model = tf.keras.models.load_model(output, custom_objects=custom_objects)
 
 # Define the company tickers and names
 companies_to_focus = {
@@ -57,10 +68,6 @@ class TransformerBlock(tf.keras.layers.Layer):
         ffn_output = self.ffn(out1)
         ffn_output = self.dropout2(ffn_output, training=training)
         return self.layernorm2(out1 + ffn_output)
-
-# Load the trained model with the custom layer
-custom_objects = {'TransformerBlock': TransformerBlock}
-model = tf.keras.models.load_model('trained_model.h5', custom_objects=custom_objects)
 
 # Function to preprocess text for BERT embeddings
 def preprocess_text(text):
