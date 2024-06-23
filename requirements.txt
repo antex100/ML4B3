@@ -1,0 +1,12 @@
+streamlit
+pandas
+numpy
+yfinance
+tensorflow
+transformers
+textblob
+plotly
+spacy
+nltk
+ta
+scikit-learn
