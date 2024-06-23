@@ -3,6 +3,7 @@ pandas
 numpy
 yfinance
 tensorflow==2.15.1
+keras==2.15.0
 transformers
 textblob
 plotly
