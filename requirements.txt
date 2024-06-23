@@ -2,7 +2,7 @@ streamlit
 pandas
 numpy
 yfinance
-tensorflow==2.11.*
+tensorflow==2.15.1
 transformers
 textblob
 plotly
