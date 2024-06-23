@@ -10,3 +10,4 @@ spacy
 nltk
 ta
 scikit-learn
+gdown
