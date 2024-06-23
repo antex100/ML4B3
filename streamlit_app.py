@@ -176,15 +176,6 @@ def create_sequences(data, look_back):
             "fundamentals": data[["PE_Ratio", "EPS", "Revenue", "Market_Cap"]].values[i:i+look_back]
         }
         sequences.append(sequence)
-        targets.append
-
-
-
-
-Continue please
-ChatGPT
-python
-Code kopieren
         targets.append(data["Future_Price"].values[i + look_back])  # Correctly assign the future price as target
     return sequences, np.array(targets)
 
