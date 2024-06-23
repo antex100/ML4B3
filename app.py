@@ -189,8 +189,8 @@ for ticker, company in companies_to_focus.items():
     fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Close'], mode='lines', name='Close Price'))
     fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['MA50'], mode='lines', name='50-Day MA'))
     fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['MA200'], mode='lines', name='200-Day MA'))
-    fig.add_trace(go.Scatter(x=[stock_data.index[-1] + timedelta(days=1)], y=[predicted_price], mode='markers', name='Predicted Price', marker=dict(color='red', size=10))
-    fig.update_layout(title=f'{company} ({ticker}) Stock Prices', xaxis_title='Date', yaxis_title='Price'))
+    fig.add_trace(go.Scatter(x=[stock_data.index[-1] + timedelta(days=1)], y=[predicted_price], mode='markers', name='Predicted Price', marker=dict(color='red', size=10)))
+    fig.update_layout(title=f'{company} ({ticker}) Stock Prices', xaxis_title='Date', yaxis_title='Price')
     st.plotly_chart(fig)
 
 # Display fundamental data below the stock prices
