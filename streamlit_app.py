@@ -59,7 +59,7 @@ from textblob import TextBlob
 import re
 
 # Load new financial news dataset
-news_data = pd.read_csv('/content/first_200_rows_dataset.csv')  # Replace with your dataset path
+news_data = pd.read_csv('first_200_rows_dataset.csv')  # Replace with your dataset path
 news_data['Date'] = pd.to_datetime(news_data['Date'])
 news_data.rename(columns={'News Article': 'News_Article', 'Date': 'Date'}, inplace=True)
 
