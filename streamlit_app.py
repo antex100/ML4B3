@@ -1,251 +1,44 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
-import streamlit as st
-from transformers import RobertaTokenizer, TFRobertaModel
 import tensorflow as tf
-import matplotlib.pyplot as plt
-from ta import add_all_ta_features
-import spacy
+from datetime import datetime, timedelta
+from transformers import RobertaTokenizer, TFRobertaModel
+import plotly.graph_objs as go
 from textblob import TextBlob
-import nltk
 import re
+import gdown
+import os
 
-# Download NLTK data
-nltk.download('stopwords')
-nltk.download('wordnet')
-
-# Load Spacy model
-try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    from spacy.cli import download
-    download("en_core_web_sm")
-    nlp = spacy.load("en_core_web_sm")
-
-# Initialize NLTK components
-stop_words = set(nltk.corpus.stopwords.words('english'))
-lemmatizer = nltk.stem.WordNetLemmatizer()
-
-# Load new financial news dataset
-news_data = pd.read_csv('/content/first_200_rows_dataset.csv')  # Replace with your dataset path
-news_data['Date'] = pd.to_datetime(news_data['Date'])
-news_data.rename(columns={'News Article': 'News_Article', 'Date': 'Date'}, inplace=True)
-
-# List of companies to focus on
+# Define the company tickers and names
 companies_to_focus = {
     'AMZN': 'Amazon',
     'GOOGL': 'Google',
     'AAPL': 'Apple'
 }
 
-# Function to preprocess text
-def preprocess_text(text):
-    text = re.sub(r'[^a-zA-Z\s]', '', text, re.I | re.A)
-    text = text.lower()
-    text = text.strip()
-    tokens = text.split()
-    tokens = [word for word in tokens if word not in stop_words]
-    tokens = [lemmatizer.lemmatize(word) for word in tokens]
-    processed_text = ' '.join(tokens)
-    return processed_text
-
-# Preprocess news articles
-news_data['Processed_Article'] = news_data['News_Article'].apply(preprocess_text)
-
-# Perform Sentiment Analysis
-def get_sentiment(text):
-    return TextBlob(text).sentiment.polarity
-
-news_data["Sentiment"] = news_data["Processed_Article"].apply(get_sentiment)
-
-# Initialize BERT tokenizer and model
+# Initialize tokenizer and BERT model
 tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
 bert_model = TFRobertaModel.from_pretrained('roberta-base')
 
-def get_bert_embeddings(texts, tokenizer, model):
-    inputs = tokenizer(texts, return_tensors="tf", padding=True, truncation=True, max_length=128)
-    outputs = model(inputs)
-    return outputs.last_hidden_state[:, 0, :].numpy()
-
-# Calculate BERT embeddings for all news
-news_data["BERT_Embedding"] = news_data["Processed_Article"].apply(lambda x: get_bert_embeddings([x], tokenizer, bert_model)[0])
-
-# Function to fetch stock prices and fundamental data
-def fetch_stock_prices(ticker, start_date, end_date):
-    stock_data = yf.download(ticker, start=start_date, end=end_date)
-    if stock_data.shape[0] > 14:
-        stock_data = add_all_ta_features(stock_data, open="Open", high="High", low="Low", close="Close", volume="Volume")
-        stock_data.reset_index(inplace=True)
-    return stock_data
-
-def fetch_fundamental_data(ticker):
-    stock = yf.Ticker(ticker)
-    fundamentals = stock.info
-    return {
-        "PE_Ratio": fundamentals.get("trailingPE", np.nan),
-        "EPS": fundamentals.get("trailingEps", np.nan),
-        "Revenue": fundamentals.get("totalRevenue", np.nan),
-        "Market_Cap": fundamentals.get("marketCap", np.nan)
-    }
-
-# Correct date format
-from_date = "2021-01-01"
-to_date = "2021-12-31"
-
-# Define look-back window
+# Define lookback window
 look_back = 5
 
-# Function to prepare data for each company
-def prepare_company_data(ticker, company, from_date, to_date):
-    stock_data = fetch_stock_prices(ticker, from_date, to_date)
-    fundamental_data = fetch_fundamental_data(ticker)
+# Define the Google Drive URL
+url = 'https://drive.google.com/uc?id=1a287f17ubldTvh5P7brg2r_VCqgVWBbB'
+output = 'trained_model.h5'
 
-    company_news = news_data[news_data['News_Article'].str.contains(company, case=False) | news_data['News_Article'].str.contains(ticker, case=False)]
+# Download the model if it doesn't exist locally
+if not os.path.exists(output):
+    with st.spinner('Downloading model...'):
+        gdown.download(url, output, quiet=False)
 
-    all_news_agg = news_data.groupby('Date').agg({
-        'BERT_Embedding': lambda x: np.mean(np.vstack(x), axis=0),
-        'Sentiment': 'mean'
-    }).reset_index()
-
-    all_dates = pd.date_range(start=from_date, end=to_date, freq='D')
-    all_news_agg = all_news_agg.set_index('Date').reindex(all_dates).reset_index()
-    all_news_agg.rename(columns={'index': 'Date'}, inplace=True)
-    all_news_agg['BERT_Embedding'] = all_news_agg['BERT_Embedding'].apply(lambda x: x if isinstance(x, np.ndarray) else np.zeros(bert_model.config.hidden_size))
-    all_news_agg['Sentiment'] = all_news_agg['Sentiment'].fillna(0.0)
-
-    if not company_news.empty:
-        company_news_agg = company_news.groupby('Date').agg({
-            'BERT_Embedding': lambda x: np.mean(np.vstack(x), axis=0),
-            'Sentiment': 'mean'
-        }).reset_index()
-
-        company_news_agg = company_news_agg.set_index('Date').reindex(all_dates).reset_index()
-        company_news_agg.rename(columns={'index': 'Date'}, inplace=True)
-        company_news_agg['BERT_Embedding'] = company_news_agg['BERT_Embedding'].apply(lambda x: x if isinstance(x, np.ndarray) else np.zeros(bert_model.config.hidden_size))
-        company_news_agg['Sentiment'] = company_news_agg['Sentiment'].fillna(0.0)
-    else:
-        company_news_agg = pd.DataFrame({
-            'Date': all_dates,
-            'BERT_Embedding': [np.zeros(bert_model.config.hidden_size)] * len(all_dates),
-            'Sentiment': [0.0] * len(all_dates)
-        })
-
-    company_news_agg.rename(columns={'BERT_Embedding': 'BERT_Embedding_company', 'Sentiment': 'Sentiment_company'}, inplace=True)
-    all_news_agg.rename(columns={'BERT_Embedding': 'BERT_Embedding_all', 'Sentiment': 'Sentiment_all'}, inplace=True)
-
-    data = pd.merge(stock_data, company_news_agg, on="Date", how="left")
-    data = pd.merge(data, all_news_agg, on="Date", how="left")
-
-    for key, value in fundamental_data.items():
-        data[key] = value
-
-    data["Company_Name"] = company
-    data["Future_Price"] = data["Close"].shift(-1)
-    data.dropna(subset=['Future_Price'], inplace=True)
-
-    technical_indicator_columns = data.filter(like='ta_').columns
-    for column in technical_indicator_columns:
-        data[column].fillna(method='ffill', inplace=True)
-        data[column].fillna(method='bfill', inplace=True)
-
-    fundamental_columns = ["PE_Ratio", "EPS", "Revenue", "Market_Cap"]
-    for column in fundamental_columns:
-        data[column].fillna(method='ffill', inplace=True)
-        data[column].fillna(method='bfill', inplace=True)
-
-    return data
-
-all_company_data = {ticker: prepare_company_data(ticker, company, from_date, to_date) for ticker, company in companies_to_focus.items()}
-all_company_data = {ticker: data for ticker, data in all_company_data.items() if data is not None}
-
-if not all_company_data:
-    raise ValueError("No data available for any company in the specified date range.")
-
-def create_sequences(data, look_back):
-    sequences = []
-    targets = []
-    for i in range(len(data) - look_back):
-        sequence = {
-            "news_embeddings_company": np.stack(data["BERT_Embedding_company"].values[i:i+look_back]),
-            "news_embeddings_all": np.stack(data["BERT_Embedding_all"].values[i:i+look_back]),
-            "price": data["Close"].values[i:i+look_back].reshape(-1, 1),
-            "sentiment_company": data["Sentiment_company"].values[i:i+look_back].reshape(-1, 1),
-            "sentiment_all": data["Sentiment_all"].values[i:i+look_back].reshape(-1, 1),
-            "technical_indicators": data.filter(like='ta_').values[i:i+look_back],
-            "fundamentals": data[["PE_Ratio", "EPS", "Revenue", "Market_Cap"]].values[i:i+look_back]
-        }
-        sequences.append(sequence)
-        targets.append(data["Future_Price"].values[i + look_back])  # Correctly assign the future price as target
-    return sequences, np.array(targets)
-
-company_sequences = {ticker: create_sequences(data, look_back) for ticker, data in all_company_data.items()}
-
-min_length = min(len(sequences) for sequences, _ in company_sequences.values())
-company_sequences = {ticker: (sequences[:min_length], targets[:min_length]) for ticker, (sequences, targets) in company_sequences.items()}
-
-def convert_sequences(sequences):
-    news_embeddings_company = np.array([seq["news_embeddings_company"] for seq in sequences])
-    news_embeddings_all = np.array([seq["news_embeddings_all"] for seq in sequences])
-    price = np.array([seq["price"] for seq in sequences])
-    sentiment_company = np.array([seq["sentiment_company"] for seq in sequences])
-    sentiment_all = np.array([seq["sentiment_all"] for seq in sequences])
-    technical_indicators = np.array([seq["technical_indicators"] for seq in sequences])
-    fundamentals = np.array([seq["fundamentals"] for seq in sequences])
-    return news_embeddings_company, news_embeddings_all, price, sentiment_company, sentiment_all, technical_indicators, fundamentals
-
-company_features = {ticker: (convert_sequences(sequences), targets) for ticker, (sequences, targets) in company_sequences.items()}
-
-for key, (value, targets) in company_features.items():
-    print(f"{key} lengths: {[len(x) for x in value]}, targets length: {len(targets)}")
-
-def combine_features(features):
-    combined = np.concatenate([features[0],
-                               features[1],
-                               features[2],
-                               features[3],
-                               features[4],
-                               features[5],
-                               features[6]], axis=-1)
-    return combined
-
-combined_features = {ticker: combine_features(features) for ticker, (features, _) in company_features.items()}
-combined_features_array = np.concatenate(list(combined_features.values()), axis=0)
-
-targets_array = np.concatenate([targets.reshape(-1, 1) for _, targets in company_features.values()], axis=0)
-targets_array = targets_array.reshape(-1, len(companies_to_focus))
-targets_df = pd.DataFrame(targets_array, columns=companies_to_focus.keys())
-
-scaler = StandardScaler()
-combined_features_array_scaled = scaler.fit_transform(combined_features_array.reshape(-1, combined_features_array.shape[-1]))
-combined_features_array_scaled = combined_features_array_scaled.reshape(combined_features_array.shape)
-
-target_scalers = {ticker: StandardScaler() for ticker in companies_to_focus.keys()}
-targets_array_scaled = np.zeros_like(targets_array)
-
-for i, ticker in enumerate(companies_to_focus.keys()):
-    targets_array_scaled[:, i] = target_scalers[ticker].fit_transform(targets_array[:, i].reshape(-1, 1)).flatten()
-
-targets_df_scaled = pd.DataFrame(targets_array_scaled, columns=companies_to_focus.keys())
-
-if combined_features_array.shape[0] != targets_df_scaled.shape[0]:
-    min_samples = min(combined_features_array.shape[0], targets_df_scaled.shape[0])
-    combined_features_array = combined_features_array[:min_samples]
-    targets_df_scaled = targets_df_scaled.iloc[:min_samples]
-
-tscv = TimeSeriesSplit(n_splits=5)
-for train_index, val_index in tscv.split(combined_features_array):
-    X_train, X_val = combined_features_array[train_index], combined_features_array[val_index]
-    y_train, y_val = targets_df_scaled.values[train_index], targets_df_scaled.values[val_index]
-
-look_back = 5
-combined_dim = combined_features_array.shape[-1]
-
-# Transformer block definition
+# Register the custom layer for deserialization
 @tf.keras.utils.register_keras_serializable()
 class TransformerBlock(tf.keras.layers.Layer):
-    def __init__(self, embed_dim, num_heads, ff_dim, rate=0.1):
-        super(TransformerBlock, self).__init__()
+    def __init__(self, embed_dim, num_heads, ff_dim, rate=0.1, **kwargs):
+        super(TransformerBlock, self).__init__(**kwargs)
         self.att = tf.keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=embed_dim)
         self.ffn = tf.keras.Sequential([
             tf.keras.layers.Dense(ff_dim, activation="relu"),
@@ -265,66 +58,161 @@ class TransformerBlock(tf.keras.layers.Layer):
         return self.layernorm2(out1 + ffn_output)
 
 # Load the trained model with the custom layer
-output = '/mnt/data/trained_model.h5'
 custom_objects = {'TransformerBlock': TransformerBlock}
 model = tf.keras.models.load_model(output, custom_objects=custom_objects)
 
 # Function to preprocess text for BERT embeddings
 def preprocess_text(text):
     text = re.sub(r'[^a-zA-Z\s]', '', text, re.I | re.A)
-    text = text.lower()
-    text = text.strip()
+    text = text.lower().strip()
     tokens = text.split()
-    tokens = [word for word in tokens if word not in stop_words]
-    tokens = [lemmatizer.lemmatize(word) for word in tokens]
-    processed_text = ' '.join(tokens)
-    return processed_text
+    return ' '.join(tokens)
 
-# Streamlit app
-st.title("Stock Price Prediction with Sentiment Analysis")
+# Function to get BERT embeddings
+def get_bert_embeddings(texts, tokenizer, model):
+    inputs = tokenizer(texts, return_tensors="tf", padding=True, truncation=True, max_length=128)
+    outputs = model(inputs)
+    return outputs.last_hidden_state[:, 0, :].numpy()  # Use the [CLS] token's embedding
 
-# Select company
-company = st.selectbox("Select a company", list(companies_to_focus.keys()))
+# Function to predict future prices
+def predict_prices(news_headlines, look_back_window, bert_dim, combined_dim):
+    processed_articles = [preprocess_text(article) for article in news_headlines]
+    bert_embeddings = [get_bert_embeddings([article], tokenizer, bert_model)[0] for article in processed_articles]
 
-# Load and display data
-if company in all_company_data:
-    company_data = all_company_data[company]
-    st.write(f"Showing data for {companies_to_focus[company]}")
-    st.write(company_data.tail())
+    # Ensure the embeddings have the correct shape
+    bert_embeddings = bert_embeddings[-look_back_window:]
+    if len(bert_embeddings) < look_back_window:
+        # Pad the embeddings if there are not enough look-back days
+        padding = [np.zeros((bert_dim,)) for _ in range(look_back_window - len(bert_embeddings))]
+        bert_embeddings = padding + bert_embeddings
 
-    # Plot stock prices
-    fig, ax = plt.subplots()
-    ax.plot(company_data['Date'], company_data['Close'], label='Close Price')
-    ax.set_title(f"{companies_to_focus[company]} Stock Price")
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Price")
-    st.pyplot(fig)
+    combined_features = np.array(bert_embeddings).reshape(1, look_back_window, -1)
+    predictions = model.predict(combined_features)
+    return predictions
 
-    # Predict prices
-    sequences, targets = company_sequences[company]
-    features, _ = company_features[company]
-    combined_features = combine_features(features)
-    combined_features_scaled = scaler.transform(combined_features.reshape(-1, combined_features.shape[-1]))
-    combined_features_scaled = combined_features_scaled.reshape(combined_features.shape)
-    predictions = model.predict(combined_features_scaled)
+# Function to perform sentiment analysis
+def get_sentiment(text):
+    return TextBlob(text).sentiment.polarity
 
-    # Display predictions
-    predicted_price = predictions[company].flatten()
-    st.write(f"Predicted price for {company}: {predicted_price[-1]}")
+# Function to fetch fundamental data for a company
+def fetch_fundamental_data(ticker):
+    stock = yf.Ticker(ticker)
+    fundamentals = stock.info
+    return {
+        "PE_Ratio": fundamentals.get("trailingPE", np.nan),
+        "EPS": fundamentals.get("trailingEps", np.nan),
+        "Revenue": fundamentals.get("totalRevenue", np.nan),
+        "Market_Cap": fundamentals.get("marketCap", np.nan)
+    }
 
-    # Plot actual vs predicted prices
-    fig, ax = plt.subplots()
-    ax.plot(company_data['Date'][-len(predicted_price):], company_data['Close'][-len(predicted_price):], label='Actual Price')
-    ax.plot(company_data['Date'][-len(predicted_price):], predicted_price, label='Predicted Price')
-    ax.set_title(f"{companies_to_focus[company]} Actual vs Predicted Price")
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Price")
-    ax.legend()
-    st.pyplot(fig)
+# Load the dataset
+news_data = pd.read_csv('modified_first_200_rows_dataset.csv')
+news_data['Date'] = pd.to_datetime(news_data['Date'])
+news_data['Processed_Article'] = news_data['News_Article'].apply(preprocess_text)
+news_data['Sentiment'] = news_data['Processed_Article'].apply(get_sentiment)
 
-    # Display sentiment and fundamentals
-    st.write("News Sentiment and Fundamentals")
-    sentiment_fundamentals = company_data[['Date', 'Sentiment_company', 'Sentiment_all', 'PE_Ratio', 'EPS', 'Revenue', 'Market_Cap']]
-    st.write(sentiment_fundamentals.tail())
-else:
-    st.write("No data available for the selected company.")
+# Streamlit App Layout
+st.title("Stock Price Prediction App")
+
+# Fetch data
+today = datetime.today().strftime('%Y-%m-%d')
+start_date = (datetime.today() - timedelta(days=look_back * 2)).strftime('%Y-%m-%d')
+end_date = today
+
+# Get today's news headlines
+todays_news = news_data[news_data['Date'] == today]
+
+# Define dimensions
+bert_dim = bert_model.config.hidden_size  # typically 768 for BERT models
+combined_dim = 1543  # Update this to the correct combined dimension
+
+# Get stock data and predictions
+stock_data_dict = {}
+fundamental_data_dict = {}
+for ticker in companies_to_focus:
+    stock_data = yf.download(ticker, start=start_date, end=end_date)
+    
+    # Calculate moving averages
+    stock_data['MA50'] = stock_data['Close'].rolling(window=50).mean()
+    stock_data['MA200'] = stock_data['Close'].rolling(window=200).mean()
+    
+    stock_data_dict[ticker] = stock_data
+    fundamental_data_dict[ticker] = fetch_fundamental_data(ticker)
+
+# Call predict_prices once
+news_headlines = todays_news['Processed_Article'].tolist()
+predictions = predict_prices(news_headlines, look_back, bert_dim, combined_dim)
+predictions_dict = {ticker: predictions[0][i] for i, ticker in enumerate(companies_to_focus)}
+
+# Display predicted prices
+st.subheader("Predicted Prices for Tomorrow")
+for ticker, company in companies_to_focus.items():
+    today_price = stock_data_dict[ticker]['Close'].values[-1]
+    predicted_price = predictions_dict[ticker]  # Correct indexing to match prediction structure
+    arrow = "⬆️" if predicted_price > today_price else "⬇️"
+    color = "green" if predicted_price > today_price else "red"
+    st.markdown(f"**{company} ({ticker}):** {predicted_price:.2f} {arrow}", unsafe_allow_html=True)
+
+# Display news headlines with sentiment in a table
+st.subheader("Latest News")
+news_table = todays_news[['News_Article', 'Sentiment']].copy()
+news_table['Sentiment_Color'] = news_table['Sentiment'].apply(lambda x: 'green' if x > 0 else 'red' if x < 0 else 'gray')
+news_table['Sentiment_Display'] = news_table.apply(lambda row: f"<span style='color:{row['Sentiment_Color']}'>{row['Sentiment']:.2f}</span>", axis=1)
+st.write(news_table[['News_Article', 'Sentiment_Display']].to_html(escape=False, index=False), unsafe_allow_html=True)
+
+# Manual prediction input
+st.subheader("Manual Prediction")
+manual_input = st.text_input("Enter news headline for manual prediction")
+manual_look_back = st.slider("Look Back Window", min_value=1, max_value=30, value=look_back)
+
+if manual_input:
+    manual_prediction = predict_prices([manual_input], manual_look_back, bert_dim, combined_dim)
+    
+    # Debugging: Inspect the structure of manual_prediction
+    st.write("Debugging: Structure of manual_prediction")
+    st.write(manual_prediction)
+    
+    # Access the prediction correctly
+    for i, ticker in enumerate(companies_to_focus):
+        st.write(f"Predicted price for {ticker}: {manual_prediction[0][i]}")
+
+# Display stock price charts with predicted prices
+st.subheader("Stock Prices")
+for ticker, company in companies_to_focus.items():
+    stock_data = stock_data_dict[ticker]
+    fig = go.Figure()
+
+    # Add actual stock price trace
+    fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Close'], mode='lines', name='Actual Close'))
+
+    # Add predicted price trace
+    predicted_price = predictions_dict[ticker]
+    predicted_date = stock_data.index[-1] + timedelta(days=1)
+    fig.add_trace(go.Scatter(x=[predicted_date], y=[predicted_price], mode='markers', name='Predicted Close', marker=dict(color='red', size=10)))
+
+    # Add moving average traces
+    fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['MA50'], mode='lines', name='MA50'))
+    fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['MA200'], mode='lines', name='MA200'))
+
+    # Customize the layout
+    fig.update_layout(
+        title=f'{company} ({ticker}) Stock Prices',
+        xaxis_title='Date',
+        yaxis_title='Price',
+        showlegend=True
+    )
+
+    # Display the chart
+    st.plotly_chart(fig)
+
+    # Display fundamental data
+    st.subheader(f"{company} ({ticker}) Fundamentals")
+    fundamentals = fundamental_data_dict[ticker]
+    st.markdown(f"""
+    - **PE Ratio**: {fundamentals['PE_Ratio']}
+    - **EPS**: {fundamentals['EPS']}
+    - **Revenue**: {fundamentals['Revenue']}
+    - **Market Cap**: {fundamentals['Market_Cap']}
+    """)
+
+# End of the Streamlit app
